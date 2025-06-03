@@ -1,0 +1,20 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Logs
+*.log
+
+# Airflow specific
+airflow.cfg
+airflow.db
+unittests.cfg
+
+# OS files
+.DS_Store
+Thumbs.db
