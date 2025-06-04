@@ -9,6 +9,7 @@ venv/
 
 # Logs
 *.log
+logs/
 
 # Airflow specific
 airflow.cfg
