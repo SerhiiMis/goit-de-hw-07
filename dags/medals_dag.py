@@ -4,8 +4,9 @@ import time
 
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator, BranchPythonOperator
-from airflow.operators.mysql_operator import MySqlOperator
+from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.sensors.sql_sensor import SqlSensor
+from airflow.utils.trigger_rule import TriggerRule
 
 default_args = {
     'owner': 'serhii',
@@ -23,12 +24,12 @@ with DAG(
     catchup=False
 ) as dag:
 
-    create_table = MySqlOperator(
+    create_table = PostgresOperator(
         task_id='create_table',
-        mysql_conn_id='mysql_default',
+        postgres_conn_id='my_postgres',
         sql="""
             CREATE TABLE IF NOT EXISTS medals_table (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 medal_type VARCHAR(10),
                 count INT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -61,9 +62,9 @@ with DAG(
         provide_context=True
     )
 
-    calc_Gold = MySqlOperator(
+    calc_Gold = PostgresOperator(
         task_id='calc_Gold',
-        mysql_conn_id='mysql_default',
+        postgres_conn_id='my_postgres',
         sql="""
             INSERT INTO medals_table (medal_type, count)
             SELECT 'Gold', COUNT(*)
@@ -72,9 +73,9 @@ with DAG(
         """
     )
 
-    calc_Silver = MySqlOperator(
+    calc_Silver = PostgresOperator(
         task_id='calc_Silver',
-        mysql_conn_id='mysql_default',
+        postgres_conn_id='my_postgres',
         sql="""
             INSERT INTO medals_table (medal_type, count)
             SELECT 'Silver', COUNT(*)
@@ -83,9 +84,9 @@ with DAG(
         """
     )
 
-    calc_Bronze = MySqlOperator(
+    calc_Bronze = PostgresOperator(
         task_id='calc_Bronze',
-        mysql_conn_id='mysql_default',
+        postgres_conn_id='my_postgres',
         sql="""
             INSERT INTO medals_table (medal_type, count)
             SELECT 'Bronze', COUNT(*)
@@ -99,21 +100,22 @@ with DAG(
 
     generate_delay = PythonOperator(
         task_id='generate_delay',
-        python_callable=sleep_task
+        python_callable=sleep_task,
+        trigger_rule=TriggerRule.ONE_SUCCESS
     )
 
     check_for_correctness = SqlSensor(
         task_id='check_for_correctness',
-        conn_id='mysql_default',
+        conn_id='my_postgres',
         sql="""
-            SELECT TIMESTAMPDIFF(SECOND, MAX(created_at), NOW())
+            SELECT EXTRACT(EPOCH FROM (NOW() - MAX(created_at)))
             FROM medals_table
-            HAVING TIMESTAMPDIFF(SECOND, MAX(created_at), NOW()) < 30;
+            HAVING EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) < 30;
         """,
         timeout=60,
         poke_interval=10,
-        mode='poke'
+        mode='poke',
+        trigger_rule=TriggerRule.ONE_SUCCESS
     )
-
     create_table >> pick_medal_task >> branch_task
     branch_task >> [calc_Gold, calc_Silver, calc_Bronze] >> generate_delay >> check_for_correctness
